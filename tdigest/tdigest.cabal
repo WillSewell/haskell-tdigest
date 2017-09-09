@@ -1,11 +1,10 @@
 name:           tdigest
-version:        0.1
-x-revision:     2
+version:        0.2
 synopsis:       On-line accumulation of rank-based statistics
 description:    A new data structure for accurate on-line accumulation of rank-based statistics such as quantiles and trimmed means.
                 .
                 See original paper: "Computing extremely accurate quantiles using t-digest" by Ted Dunning and Otmar Ertl
-                for more details <https://github.com/tdunning/t-digest/blob/master/docs/t-digest-paper/histo.pdf>.
+                for more details <https://github.com/tdunning/t-digest/blob/07b8f2ca2be8d0a9f04df2feadad5ddc1bb73c88/docs/t-digest-paper/histo.pdf>.
 category:       Numeric
 homepage:       https://github.com/futurice/haskell-tdigest#readme
 bug-reports:    https://github.com/futurice/haskell-tdigest/issues
@@ -50,6 +49,7 @@ library
       Data.TDigest.NonEmpty
       Data.TDigest.Postprocess
       Data.TDigest.Internal
+      Data.TDigest.Vector
   default-language: Haskell2010
   other-extensions:
       DataKinds

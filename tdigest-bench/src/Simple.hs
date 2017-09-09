@@ -44,6 +44,8 @@ import qualified Graphics.Rendering.Chart.Plot.TDigest     as Chart
 import Data.TDigest
 import Data.TDigest.Internal (size)
 
+import qualified Data.TDigest.Vector as TDV
+
 -------------------------------------------------------------------------------
 -- Data
 -------------------------------------------------------------------------------
@@ -58,6 +60,8 @@ data Method
     | MethodTDigestDirect
     | MethodTDigestBuffered
     | MethodTDigestSparking
+
+    | MethodTDigestVecDirect
   deriving (Show)
 
 data Distrib
@@ -96,15 +100,17 @@ action m d s c iseed fp = do
             DistribGamma    -> randomStream (gammaDistr 0.1 0.1) seed   -- median around .0000593391
             DistribStandard -> randomStream standard seed
     let method = case m of
-          MethodAverage         -> pure . listAverage
-          MethodAverageMachine  -> reducerMachine getAverage
-          MethodAverageSparking -> reducerSparkingMachine getAverage
-          MethodNaive           -> pure . naiveMedian
-          MethodVector          -> pure . vectorMedian
-          MethodTDigest         -> reifyNat c $ tdigestMachine fp distr
-          MethodTDigestDirect   -> reifyNat c $ tdigestDirect fp distr
-          MethodTDigestBuffered -> reifyNat c $ tdigestBufferedMachine fp distr
-          MethodTDigestSparking -> reifyNat c $ tdigestSparkingMachine fp distr
+          MethodAverage          -> pure . listAverage
+          MethodAverageMachine   -> reducerMachine getAverage
+          MethodAverageSparking  -> reducerSparkingMachine getAverage
+          MethodNaive            -> pure . naiveMedian
+          MethodVector           -> pure . vectorMedian
+          MethodTDigest          -> reifyNat c $ tdigestMachine fp distr
+          MethodTDigestDirect    -> reifyNat c $ tdigestDirect fp distr
+          MethodTDigestBuffered  -> reifyNat c $ tdigestBufferedMachine fp distr
+          MethodTDigestSparking  -> reifyNat c $ tdigestSparkingMachine fp distr
+
+          MethodTDigestVecDirect -> reifyNat c $ tdigestVecDirect fp distr
     timed $ method input
 
 reifyNat :: forall x. Int -> (forall n. KnownNat n => Proxy n -> x) -> x
@@ -127,17 +133,18 @@ actionParser = action
     <*> O.optional (O.strOption (
         O.short 'o' <> O.long "output" <> O.metavar ":output.svg"))
   where
-    readMethod "average"  = Just MethodAverage
-    readMethod "averagem" = Just MethodAverageMachine
-    readMethod "averages" = Just MethodAverageSparking
-    readMethod "naive"    = Just MethodNaive
-    readMethod "vector"   = Just MethodVector
-    readMethod "digest"   = Just MethodTDigest
-    readMethod "tdigest"  = Just MethodTDigest
-    readMethod "direct"   = Just MethodTDigestDirect
-    readMethod "buffered" = Just MethodTDigestBuffered
-    readMethod "sparking" = Just MethodTDigestSparking
-    readMethod _          = Nothing
+    readMethod "average"    = Just MethodAverage
+    readMethod "averagem"   = Just MethodAverageMachine
+    readMethod "averages"   = Just MethodAverageSparking
+    readMethod "naive"      = Just MethodNaive
+    readMethod "vector"     = Just MethodVector
+    readMethod "digest"     = Just MethodTDigest
+    readMethod "tdigest"    = Just MethodTDigest
+    readMethod "direct"     = Just MethodTDigestDirect
+    readMethod "buffered"   = Just MethodTDigestBuffered
+    readMethod "sparking"   = Just MethodTDigestSparking
+    readMethod "vec-direct" = Just MethodTDigestVecDirect
+    readMethod _            = Nothing
 
     readDistrib "incr"     = Just DistribIncr
     readDistrib "uniform"  = Just DistribUniform
@@ -219,6 +226,19 @@ tdigestDirect fp d _ input = do
         Just (Right digest) -> do
             printStats fp d (digest :: TDigest comp)
             return $ median digest
+
+tdigestVecDirect
+    :: forall comp. KnownNat comp
+    => Maybe FilePath -> SomeContDistr -> Proxy comp -> [Double] -> IO (Maybe Double)
+tdigestVecDirect fp d _ input = do
+    -- TODO: Right -> validate
+    let mdigest = Just $ Right $ foldl' (flip TDV.insert) mempty input
+    case mdigest of
+        Nothing             -> return Nothing
+        Just (Left err)     -> fail $ "Validation error: " ++ err
+        Just (Right digest) -> do
+            -- printStats fp d (digest :: TDigest comp)
+            return $ TDV.median (digest :: TDV.TDigest comp)
 
 tdigestMachine
     :: forall comp. KnownNat comp
