@@ -88,6 +88,7 @@ merge tw' comp (y:ys) = go 0 (qLimit' 0) y ys
     go  q0  qLimit sigma (x:xs)
         | q <= qLimit = go q0 qLimit (plus sigma x) xs
         | otherwise   = sigma : go q0' (qLimit' q0') x xs
+-- traceShow ("q", sigma, x, q, qLimit) $
       where
         q = q0 + (snd sigma + snd x) / tw
         q0' = q0 + snd sigma / tw
@@ -96,29 +97,35 @@ merge tw' comp (y:ys) = go 0 (qLimit' 0) y ys
     plus (m1,w1) (m2,w2) = ((m1 * w1 + m2 * w2) / w, w) where w = w1 + w2
 
 data TDigest (compression :: Nat) = TDigest
-    { tdigestSize   :: !Int                   -- ^ sum of vector and buffer size
-    , tdigestData   :: !(VU.Vector Centroid)  -- ^ actual data, *invariant:* sorted by mean
-    , tdigestBuffer :: [Double]               -- ^ addition buffer, elements with weight 1
+    { tdigestTotalWeight :: !Int                   -- ^ sum of vector and buffer size
+    , tdigestData        :: !(VU.Vector Centroid)  -- ^ actual data, *invariant:* sorted by mean
+    , tdigestBufferSize  :: !Int
+    , tdigestBuffer      :: [Double]               -- ^ addition buffer, elements with weight 1
+    , tdigestDirection   :: !Bool                  -- ^ direction is a hack, so we merge from left and right
     }
   deriving Show
 
 forceCompress :: forall comp. KnownNat comp => TDigest comp -> TDigest comp
-forceCompress t@(TDigest s d b)
+forceCompress t@(TDigest s d _ b dir)
     | null b    = t
-    | otherwise = TDigest s d' []
+    | otherwise = TDigest s d' 0 [] (not dir)
   where
     d' = VU.fromList
+       . rev
        . merge s comp             -- compress
+       . rev
        . sortBy (comparing fst)   -- sort
        . (++ map (flip (,) 1) b)  -- add buffer
        . VU.toList
        $ d
-    comp = fromInteger $ natVal (Proxy :: Proxy comp) -- * 50
+    comp = fromInteger $ natVal (Proxy :: Proxy comp) * 50
+    rev | dir       = id
+        | otherwise = reverse
 
 instance KnownNat comp => Semigroup (TDigest comp) where
 
 instance KnownNat comp => Monoid (TDigest comp) where
-    mempty = (TDigest 0 mempty mempty)
+    mempty = (TDigest 0 mempty 0 mempty True)
     mappend = (<>)
 
 -- | Both 'cons' and 'snoc' are 'insert'
@@ -133,24 +140,28 @@ insert
     => Double  -- ^ element
     -> TDigest comp
     -> TDigest comp
-insert x (TDigest s d b) = compress (TDigest (s + 1) d (x : b))
+insert x (TDigest s d sb b dir) = compress (TDigest (s + 1) d (sb + 1) (x : b) dir)
 
 singleton :: Double -> TDigest comp
-singleton x = TDigest 1 (VU.singleton (x, 1)) []
+singleton x = TDigest 1 (VU.singleton (x, 1)) 0 [] True
 
 compress :: forall comp. KnownNat comp => TDigest comp -> TDigest comp
-compress t@(TDigest s d _)
-    | s - VU.length d > compInt = forceCompress t
-    | otherwise                 = t
+compress t@(TDigest _ _ bs _ _)
+    | bs > compInt = forceCompress t
+    | otherwise    = t
   where
-    compInt = fromInteger $ natVal (Proxy :: Proxy comp) -- * 50
+    compInt = fromInteger $ natVal (Proxy :: Proxy comp) * 50
 
 median :: KnownNat comp => TDigest comp -> Maybe Double
 median = quantile 0.5
 
 quantile :: KnownNat comp => Double -> TDigest comp -> Maybe Double
 quantile q td = case forceCompress td of
-    (TDigest tw d _) -> PP.quantile' q (fromIntegral tw) <$> histogram d
+    (TDigest tw d _ _ _) -> PP.quantile' q (fromIntegral tw) <$> histogram d
 
 histogram :: VU.Vector Centroid -> Maybe (NonEmpty PP.HistBin)
 histogram = fmap PP.histogram' . nonEmpty . VU.toList
+
+validate :: TDigest comp -> Either String (TDigest comp)
+validate td@(TDigest tw d bs b dir)
+    | otherwise = Right td

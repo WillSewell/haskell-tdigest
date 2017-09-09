@@ -231,8 +231,7 @@ tdigestVecDirect
     :: forall comp. KnownNat comp
     => Maybe FilePath -> SomeContDistr -> Proxy comp -> [Double] -> IO (Maybe Double)
 tdigestVecDirect fp d _ input = do
-    -- TODO: Right -> validate
-    let mdigest = Just $ Right $ foldl' (flip TDV.insert) mempty input
+    let mdigest = Just $ TDV.validate $ foldl' (flip TDV.insert) mempty input
     case mdigest of
         Nothing             -> return Nothing
         Just (Left err)     -> fail $ "Validation error: " ++ err
