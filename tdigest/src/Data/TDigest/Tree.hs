@@ -13,12 +13,12 @@
 -- Just 990.5
 --
 -- >>> quantile 0.99 (tdigest [1..1000] :: TDigest 3)
--- Just 990.3...
+-- Just 989.0...
 --
 -- t-Digest is more precise in tails, especially median is imprecise:
 --
--- >>> median (forceCompress $ tdigest [1..1000] :: TDigest 10)
--- Just 500.5
+-- >>> median (forceCompress $ tdigest [1..1000] :: TDigest 25)
+-- Just 497.6...
 --
 -- === Semigroup
 --
@@ -28,22 +28,22 @@
 -- >>> let td xs = tdigest xs :: TDigest 10
 --
 -- >>> median (td [1..500] <> (td [501..1000] <> td [1001..1500]))
--- Just 750.5
+-- Just 802...
 --
 -- >>> median ((td [1..500] <> td [501..1000]) <> td [1001..1500])
--- Just 750.5
+-- Just 726...
 --
 -- The linear is worst-case scenario:
 --
 -- >>> let td' xs = tdigest (fairshuffle xs) :: TDigest 10
 --
 -- >>> median (td' [1..500] <> (td' [501..1000] <> td' [1001..1500]))
--- Just 750.5
+-- Just 750.3789...
 --
 -- >>> median ((td' [1..500] <> td' [501..1000]) <> td' [1001..1500])
--- Just 750.5
+-- Just 750.3789...
 --
-module Data.TDigest.Vector (
+module Data.TDigest.Tree (
     -- * Construction
     TDigest,
     tdigest,
@@ -57,12 +57,22 @@ module Data.TDigest.Vector (
     --
     -- |
     --
-    -- >>> let digest = foldl' (flip insert') mempty [0..1000] :: TDigest 5
+    -- >>> let digest = foldl' (flip insert') mempty [0..1000] :: TDigest 10
     -- >>> (size digest, size $ compress digest)
-    -- (1001,173)
+    -- (1001,52)
     --
     -- >>> (quantile 0.1 digest, quantile 0.1 $ compress digest)
-    -- (Just 99.6...,Just 99.6...)
+    -- (Just 99.6...,Just 89.7...)
+    --
+    -- /Note:/ when values are inserted in more random order,
+    -- t-Digest self-compresses on the fly:
+    --
+    -- >>> let digest = foldl' (flip insert') mempty (fairshuffle [0..1000]) :: TDigest 10
+    -- >>> (size digest, size $ compress digest, size $ forceCompress digest)
+    -- (78,78,48)
+    --
+    -- >>> quantile 0.1 digest
+    -- Just 98.9...
     --
     compress,
     forceCompress,
@@ -76,9 +86,8 @@ module Data.TDigest.Vector (
     -- ** Mean & Variance
     --
     -- |
-    --
-    -- >>> stddev (tdigest $ fairshuffle [0..100] :: TDigest 10)
-    -- Just 29.0...
+    -- -- >>> stddev (tdigest $ fairshuffle [0..100] :: TDigest 10)
+    -- Just 29.1...
     mean,
     variance,
     stddev,
@@ -90,10 +99,11 @@ module Data.TDigest.Vector (
     size,
     valid,
     validate,
+    debugPrint,
     ) where
 
-import Data.TDigest.Vector.Internal
-import Data.TDigest.Vector.Postprocess
+import Data.TDigest.Tree.Internal
+import Data.TDigest.Tree.Postprocess
 
 -- $setup
 -- >>> :set -XDataKinds
